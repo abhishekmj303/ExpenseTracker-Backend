@@ -52,8 +52,15 @@ event_user = db.Table(
 )
 
 
+@dataclass
 class Event(db.Model):
     __tablename__ = 'event'
+    id: int
+    name: str
+    date: datetime
+    # transactions: list
+    # users: list
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), default='Untitled Event', nullable=False)
     date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

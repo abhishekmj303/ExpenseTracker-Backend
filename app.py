@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
+from sqlalchemy import func, text
 from flask_migrate import Migrate
 import flask_praetorian
 from flask_mail import Mail, Message
@@ -51,16 +52,21 @@ def login_api():
         return jsonify({"message": "Invalid credentials"}), 401
     if not user.is_confirm:
         return jsonify({"message": "Please confirm your account"}), 401
-    resp = {"access_token": guard.encode_jwt_token(user), "message": "Login successful"}
-    return jsonify(resp), 200
+    access_token = guard.encode_jwt_token(user)
+    resp = jsonify({
+        "access_token": access_token,
+        "message": "Login successful"
+    })
+    resp.headers.add('Set-Cookie', f'access_token={access_token}; HttpOnly;')
+    return resp, 200
 
 
 @app.route('/signup', methods=['POST'])
 def signup_api():
     req = request.get_json(force=True)
-    req['hashed_password'] = guard.hash_password(req.get('password', None))
+    req['hashed_password'] = guard.hash_password(req.get('password'))
     del req['password']
-    new_username = req.get('username', None)
+    new_username = req.get('username')
     if User.query.filter_by(username=new_username).first():
         resp = {'message': f'username {new_username} already exists'}
         return jsonify(resp), 409
@@ -78,7 +84,7 @@ def signup_api():
 
 @app.route('/verify', methods=['GET'])
 def verify_api():
-    token = request.args.get('token', None)
+    token = request.args.get('token')
     if not token:
         return jsonify({"message": "Missing token"}), 400
     try:
@@ -91,6 +97,13 @@ def verify_api():
         return jsonify(resp), 200
     except Exception as e:
         return jsonify({"message": str(e)}), 400
+
+
+@app.route('/logout', methods=['POST'])
+def logout_api():
+    resp = jsonify({"message": "Successfully logged out"})
+    resp.headers.add('Set-Cookie', 'access_token=; HttpOnly;')
+    return resp, 200
 
 
 # def refresh_jwt(token):
@@ -107,6 +120,106 @@ def home():
     msg.body = "This is a test email sent using Flask-Mail."
     mail.send(msg)
     return "Sent"
+
+
+@app.route('/user', methods=['GET', 'POST'])
+@flask_praetorian.auth_required
+def user_api():
+    if request.method == 'GET':
+        user = flask_praetorian.current_user()
+        resp = {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'name': user.name,
+            'upi': user.upi,
+            'date_joined': user.date_joined
+        }
+        return jsonify(resp), 200
+    elif request.method == 'POST':
+        data = request.get_json()
+        user = flask_praetorian.current_user()
+        if data.get('username'):
+            user.username = data['username']
+        if data.get('name'):
+            user.name = data['name']
+        if data.get('upi'):
+            user.upi = data['upi']
+        if data.get('email') != user.email:
+            user.email = data['email']
+            user.is_confirm = False
+            guard.send_registration_email(
+                user.email, user,
+                subject="Confirm new email",
+                confirmation_uri="http://localhost:5000/verify"
+            )
+        db.session.commit()
+        resp = {'message': 'User updated', 'status': 'success'}
+        return jsonify(resp), 201
+
+
+@app.route('/user/password', methods=['POST'])
+@flask_praetorian.auth_required
+def password_api():
+    data = request.get_json()
+    user = flask_praetorian.current_user()
+    if guard.authenticate(user.username, data['old_password']):
+        user.hashed_password = guard.hash_password(data['new_password'])
+        db.session.commit()
+        access_token = guard.encode_jwt_token(user)
+        resp = jsonify({'message': 'Password updated', 'status': 'success'})
+        resp.headers.add('Set-Cookie', f'access_token={access_token}; HttpOnly;')
+        return jsonify(resp), 201
+    else:
+        resp = {'message': 'Incorrect password', 'status': 'error'}
+        return jsonify(resp), 401
+
+
+@app.route('/expense/total', methods=['GET'])
+@flask_praetorian.auth_required
+def total_expense_api():
+    user = flask_praetorian.current_user()
+    this_incoming = db.session.query(func.sum(Expense.amount)).filter(
+        ((Expense.username == user.username) & (Expense.amount > 0))
+    ).scalar()
+    other_incoming = db.session.query(func.sum(Expense.amount)).filter(
+        ((Expense.other_username == user.username) & (Expense.is_private == False) & (Expense.amount < 0))
+    ).scalar()
+    this_outgoing = db.session.query(func.sum(Expense.amount)).filter(
+        ((Expense.username == user.username) & (Expense.amount < 0))
+    ).scalar()
+    other_outgoing = db.session.query(func.sum(Expense.amount)).filter(
+        ((Expense.other_username == user.username) & (Expense.is_private == False) & (Expense.amount > 0))
+    ).scalar()
+    incoming = float(this_incoming or 0) - float(other_incoming or 0)
+    outgoing = float(this_outgoing or 0) - float(other_outgoing or 0)
+    total_balance = float(incoming or 0) + float(outgoing or 0)
+    resp = {
+        'total_balance': total_balance,
+        'total_incoming': incoming,
+        'total_outgoing': outgoing
+    }
+    return jsonify(resp), 200
+
+
+@app.route('/expense/user', methods=['GET'])
+@flask_praetorian.auth_required
+def user_expense_api():
+    user = flask_praetorian.current_user()
+    this_total = db.session.query(Expense.other_username.label('user'), func.sum(Expense.amount).label('amount_sum')).filter(
+        (Expense.username == user.username)
+    ).group_by(Expense.other_username)
+    other_total = db.session.query(Expense.username.label('user'), func.sum(-Expense.amount).label('amount_sum')).filter(
+        (Expense.other_username == user.username) & (Expense.is_private == False)
+    ).group_by(Expense.username)
+    total = this_total.union(other_total).all()
+    user_expense = {}
+    for expense in total:
+        if expense.user not in user_expense:
+            user_expense[expense.user] = expense.amount_sum
+        else:
+            user_expense[expense.user] += expense.amount_sum
+    return jsonify(user_expense), 200
 
 
 @app.route('/expense', methods=['GET', 'POST', 'DELETE'])
@@ -139,5 +252,5 @@ def expense_api():
 def event_api():
     if request.method == 'GET':
         user = flask_praetorian.current_user()
-        events = Event.query.filter().all()
+        events = user.events
         return jsonify(events), 200
