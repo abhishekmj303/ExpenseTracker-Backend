@@ -1,12 +1,10 @@
 import os
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
-from sqlalchemy import func, text
+from sqlalchemy import func
 from flask_migrate import Migrate
-import flask_praetorian
 from flask_mail import Mail, Message
 from flask_cors import CORS
-from models import *
 
 load_dotenv()
 
@@ -18,8 +16,9 @@ CORS(app)
 # Setup database
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.getcwd(), 'database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+from models import *
 db.init_app(app)
-migrate = Migrate(app, db)
+migrate = Migrate(app, db, render_as_batch=True)
 
 # Setup user-authentication (https://flask-praetorian.readthedocs.io/en/latest/flask_praetorian.html)
 app.config["SECRET_KEY"] = os.getenv('SECRET_KEY')
@@ -27,7 +26,7 @@ app.config["JWT_ACCESS_LIFESPAN"] = {"hours": 24}
 app.config["JWT_REFRESH_LIFESPAN"] = {"days": 30}
 app.config["PRAETORIAN_ROLES_DISABLED"] = True
 app.config["PRAETORIAN_CONFIRMATION_SENDER"] = os.getenv('EMAIL')
-guard = flask_praetorian.Praetorian()
+from auth import *
 with app.app_context():
     guard.init_app(app, User)
 
@@ -42,78 +41,6 @@ app.config['MAIL_USE_SSL'] = True
 mail = Mail(app)
 
 
-@app.route('/login', methods=['POST'])
-def login_api():
-    req = request.get_json(force=True)
-    username = req.get("username", None)
-    password = req.get("password", None)
-    user = guard.authenticate(username, password)
-    if not user:
-        return jsonify({"message": "Invalid credentials"}), 401
-    if not user.is_confirm:
-        return jsonify({"message": "Please confirm your account"}), 401
-    access_token = guard.encode_jwt_token(user)
-    resp = jsonify({
-        "access_token": access_token,
-        "message": "Login successful"
-    })
-    resp.headers.add('Set-Cookie', f'access_token={access_token}; HttpOnly;')
-    return resp, 200
-
-
-@app.route('/signup', methods=['POST'])
-def signup_api():
-    req = request.get_json(force=True)
-    req['hashed_password'] = guard.hash_password(req.get('password'))
-    del req['password']
-    new_username = req.get('username')
-    if User.query.filter_by(username=new_username).first():
-        resp = {'message': f'username {new_username} already exists'}
-        return jsonify(resp), 409
-    new_user = User(**req)
-    db.session.add(new_user)
-    db.session.commit()
-    guard.send_registration_email(
-        new_user.email, new_user,
-        subject="Confirm your account",
-        confirmation_uri="http://localhost:5000/verify"
-    )
-    resp = {'message': f'successfully sent registration email to user {new_user.email}'}
-    return jsonify(resp), 200
-
-
-@app.route('/verify', methods=['GET'])
-def verify_api():
-    token = request.args.get('token')
-    if not token:
-        return jsonify({"message": "Missing token"}), 400
-    try:
-        user = guard.get_user_from_registration_token(token)
-        if user.is_confirm:
-            return jsonify({"message": "User already confirmed"}), 400
-        User.query.filter_by(id=user.id).update({'is_confirm': True})
-        db.session.commit()
-        resp = {'message': f'user {user.username} successfully confirmed'}
-        return jsonify(resp), 200
-    except Exception as e:
-        return jsonify({"message": str(e)}), 400
-
-
-@app.route('/logout', methods=['POST'])
-def logout_api():
-    resp = jsonify({"message": "Successfully logged out"})
-    resp.headers.add('Set-Cookie', 'access_token=; HttpOnly;')
-    return resp, 200
-
-
-# def refresh_jwt(token):
-#     try:
-#         user = guard.get_user_from_refresh_token(token)
-#         return guard.encode_jwt_token(user)
-#     except Exception as e:
-#         return jsonify({"message": str(e)}), 400
-
-
 @app.route('/mail')
 def home():
     msg = Message('Hello', sender=os.getenv('EMAIL'), recipients=['siddeshdslr@gmail.com', 'abhishekmj303@gmail.com'])
@@ -122,7 +49,7 @@ def home():
     return "Sent"
 
 
-@app.route('/user', methods=['GET', 'POST'])
+@app.route('/users', methods=['GET', 'POST'])
 @flask_praetorian.auth_required
 def user_api():
     if request.method == 'GET':
@@ -158,7 +85,7 @@ def user_api():
         return jsonify(resp), 201
 
 
-@app.route('/user/password', methods=['POST'])
+@app.route('/users/password', methods=['POST'])
 @flask_praetorian.auth_required
 def password_api():
     data = request.get_json()
@@ -175,7 +102,7 @@ def password_api():
         return jsonify(resp), 401
 
 
-@app.route('/expense/total', methods=['GET'])
+@app.route('/expenses/total', methods=['GET'])
 @flask_praetorian.auth_required
 def total_expense_api():
     user = flask_praetorian.current_user()
@@ -195,6 +122,7 @@ def total_expense_api():
     outgoing = float(this_outgoing or 0) - float(other_outgoing or 0)
     total_balance = float(incoming or 0) + float(outgoing or 0)
     resp = {
+        'username': user.username,
         'total_balance': total_balance,
         'total_incoming': incoming,
         'total_outgoing': outgoing
@@ -202,14 +130,20 @@ def total_expense_api():
     return jsonify(resp), 200
 
 
-@app.route('/expense/user', methods=['GET'])
+@app.route('/expenses/users', methods=['GET'])
 @flask_praetorian.auth_required
 def user_expense_api():
     user = flask_praetorian.current_user()
-    this_total = db.session.query(Expense.other_username.label('user'), func.sum(Expense.amount).label('amount_sum')).filter(
+    this_total = db.session.query(
+        Expense.other_username.label('user'),
+        func.sum(Expense.amount).label('amount_sum')
+    ).filter(
         (Expense.username == user.username)
     ).group_by(Expense.other_username)
-    other_total = db.session.query(Expense.username.label('user'), func.sum(-Expense.amount).label('amount_sum')).filter(
+    other_total = db.session.query(
+        Expense.username.label('user'),
+        func.sum(-Expense.amount).label('amount_sum')
+    ).filter(
         (Expense.other_username == user.username) & (Expense.is_private == False)
     ).group_by(Expense.username)
     total = this_total.union(other_total).all()
@@ -222,35 +156,97 @@ def user_expense_api():
     return jsonify(user_expense), 200
 
 
-@app.route('/expense', methods=['GET', 'POST', 'DELETE'])
+@app.route('/expenses', methods=['GET', 'POST'])
 @flask_praetorian.auth_required
 def expense_api():
     user = flask_praetorian.current_user()
     if request.method == 'GET':
-        expenses = Expense.query.filter(
-            (Expense.username == user.username) |
-            ((Expense.other_username == user.username) & (Expense.is_private == False))
-        ).all()
+        this_expenses = Expense.query(
+            Expense.other_username.label('user'),
+            Expense.amount,
+            Expense.category.label('reason'),
+            Expense.date,
+            Expense.is_private
+        ).filter(
+            (Expense.username == user.username)
+        )
+        other_expenses = Expense.query(
+            Expense.username.label('user'),
+            -Expense.amount,
+            Expense.category.label('reason'),
+            Expense.date,
+            Expense.is_private
+        ).filter(
+            (Expense.other_username == user.username) & (Expense.is_private == False)
+        )
+        expenses = this_expenses.union(other_expenses).all()
         return jsonify(expenses), 200
     elif request.method == 'POST':
         data = request.get_json()
-        expense = Expense(**data)
+        new_expense_data = {
+            'other_username': data.get('other_username'),
+            'amount': data.get('amount'),
+            'category': data.get('reason'),
+            'date': data.get('date'),
+            'is_private': data.get('is_private')
+        }
+        expense = Expense(**new_expense_data)
         db.session.add(expense)
         db.session.commit()
         resp = {'id': expense.id, 'message': 'Expense added', 'status': 'success'}
         return jsonify(resp), 201
-    elif request.method == 'DELETE':
-        expense = Expense.query.filter().first()
-        db.session.delete(expense)
-        db.session.commit()
-        resp = {'message': 'Expense deleted', 'status': 'success'}
-        return jsonify(resp), 200
 
 
-@app.route('/event', methods=['GET', 'POST', 'DELETE'])
+@app.route('/expenses/<exp_id>', methods=['DELETE'])
+@flask_praetorian.auth_required
+def expense_delete_api(exp_id):
+    expense = Expense.query.filter_by(id=exp_id).first()
+    if not expense:
+        resp = {'message': 'Expense not found', 'status': 'fail'}
+        return jsonify(resp), 404
+    db.session.delete(expense)
+    db.session.commit()
+    resp = {'id': expense.id, 'message': 'Expense deleted', 'status': 'success'}
+    return jsonify(resp), 200
+
+
+@app.route('/events', methods=['GET', 'POST'])
 @flask_praetorian.auth_required
 def event_api():
+    user = flask_praetorian.current_user()
     if request.method == 'GET':
-        user = flask_praetorian.current_user()
         events = user.events
         return jsonify(events), 200
+    elif request.method == 'POST':
+        data = request.get_json()
+        new_event_data = {
+            'name': data.get('event_name'),
+            'date': datetime.fromisoformat(data.get('date'))
+        }
+        new_event = Event(**new_event_data)
+        new_event_users = [
+            User.query.filter(User.username == username).first()
+            for username in data.get('users')
+        ]
+        db.session.add(new_event)
+        for u in new_event_users:
+            new_event.users.append(u)
+        db.session.commit()
+        resp = {'id': new_event.id, 'message': 'Event added'}
+        return jsonify(resp), 201
+
+
+@app.route('/events/<event_id>', methods=['DELETE'])
+@flask_praetorian.auth_required
+def event_delete_api(event_id):
+    event = Event.query.filter_by(id=event_id).first()
+    if event is None:
+        resp = {'message': 'Event not found', 'status': 'fail'}
+        return jsonify(resp), 404
+    if event.owner != flask_praetorian.current_user().username:
+        resp = {'message': 'You are not the owner of this event', 'status': 'fail'}
+        return jsonify(resp), 403
+    db.session.delete(event)
+    db.session.commit()
+    resp = {'id': event.id, 'message': 'Event deleted'}
+    return jsonify(resp), 200

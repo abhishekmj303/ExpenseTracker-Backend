@@ -1,9 +1,20 @@
 from datetime import datetime
 from dataclasses import dataclass
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import MetaData
 # from flask_praetorian import SQLAlchemyUserMixin
 
-db = SQLAlchemy()
+convention = {
+    "ix": 'ix_%(column_0_label)s',
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s"
+}
+
+metadata = MetaData(naming_convention=convention)
+
+db = SQLAlchemy(metadata=metadata)
 
 
 class User(db.Model):
@@ -57,13 +68,15 @@ class Event(db.Model):
     __tablename__ = 'event'
     id: int
     name: str
-    date: datetime
+    date: datetime.date
+    owner: str
     # transactions: list
     # users: list
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), default='Untitled Event', nullable=False)
     date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    owner = db.Column(db.String(80), db.ForeignKey('user.username'), nullable=False)
     transactions = db.relationship('Transaction', back_populates='event')
     users = db.relationship('User', secondary=event_user, back_populates='events')
 
