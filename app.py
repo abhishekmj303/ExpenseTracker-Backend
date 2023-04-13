@@ -25,7 +25,7 @@ app.config["JWT_ACCESS_LIFESPAN"] = {"hours": 24}
 app.config["JWT_REFRESH_LIFESPAN"] = {"days": 30}
 app.config["PRAETORIAN_ROLES_DISABLED"] = True
 app.config["PRAETORIAN_CONFIRMATION_SENDER"] = os.getenv('EMAIL')
-from auth import *
+from routes.auth import *
 with app.app_context():
     guard.init_app(app, User)
 
@@ -40,7 +40,7 @@ app.config['MAIL_USE_SSL'] = True
 mail = Mail(app)
 
 # Setup routes
-from auth import *
-from users import *
-from expenses import *
-from events import *
+from routes.auth import *
+from routes.users import *
+from routes.expenses import *
+from routes.events import *
