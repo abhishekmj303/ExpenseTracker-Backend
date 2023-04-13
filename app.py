@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from flask import Flask
 from flask_migrate import Migrate
-from flask_mail import Mail, Message
+from flask_mail import Mail
 from flask_cors import CORS
 
 load_dotenv()
@@ -39,10 +39,8 @@ app.config['MAIL_USE_TLS'] = False
 app.config['MAIL_USE_SSL'] = True
 mail = Mail(app)
 
-
-@app.route('/mail')
-def home():
-    msg = Message('Hello', sender=os.getenv('EMAIL'), recipients=['siddeshdslr@gmail.com', 'abhishekmj303@gmail.com'])
-    msg.body = "This is a test email sent using Flask-Mail."
-    mail.send(msg)
-    return "Sent"
+# Setup routes
+from auth import *
+from users import *
+from expenses import *
+from events import *
