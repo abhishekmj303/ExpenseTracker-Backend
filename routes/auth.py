@@ -40,7 +40,7 @@ def signup_api():
         'upi': req.get('upi'),
         'date_joined': datetime.now(),
     }
-    new_user = User(**req)
+    new_user = User(**new_user_data)
     old_user = User.query.filter_by(username=new_user_data['username']).first()
     if old_user:
         if old_user.is_confirm:
