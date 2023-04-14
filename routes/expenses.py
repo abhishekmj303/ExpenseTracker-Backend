@@ -65,6 +65,15 @@ def user_expense_api():
     return jsonify(group_users), 200
 
 
+@app.route('/expenses/<username>', methods=['GET'])
+@flask_praetorian.auth_required
+def user_expense_username_api(username):
+    user = flask_praetorian.current_user()
+    expenses = user_expenses_query(user).filter_by(user=username).all()
+    expenses = [dict(e._asdict()) for e in expenses]
+    return jsonify(expenses), 200
+
+
 @app.route('/expenses/past/<days>', methods=['GET'])
 @flask_praetorian.auth_required
 def past_expense_api(days):

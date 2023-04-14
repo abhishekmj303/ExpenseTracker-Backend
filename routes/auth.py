@@ -35,7 +35,7 @@ def signup_api():
     new_user_data = {
         'username': req.get('username'),
         'email': req.get('email'),
-        'password': guard.hash_password(req.get('password')),
+        'hashed_password': guard.hash_password(req.get('password')),
         'name': req.get('name'),
         'upi': req.get('upi'),
         'date_joined': datetime.now(),
