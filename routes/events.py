@@ -10,7 +10,7 @@ from models import *
 def event_api():
     user = flask_praetorian.current_user()
     if request.method == 'GET':
-        events = user.events
+        events = EventUser.query.filter_by(username=user.username).all()
         return jsonify(events), 200
     elif request.method == 'POST':
         data = request.get_json()
@@ -20,13 +20,16 @@ def event_api():
             'owner': user.username,
         }
         new_event = Event(**new_event_data)
-        new_event_users = [
-            User.query.filter(User.username == username).first()
-            for username in data.get('users')
-        ]
         db.session.add(new_event)
-        for u in new_event_users:
-            new_event.users.append(u)
+        
+        new_event_user_data = {
+            'event_id': new_event.id,
+            'username': user.username
+        }
+        db.session.add(EventUser(**new_event_user_data))
+        for u in data.get('users'):
+            new_event_user_data['username'] = u
+            db.session.add(EventUser(**new_event_user_data))
         db.session.commit()
 
         resp = {'id': new_event.id, 'message': 'Event added'}
@@ -45,7 +48,7 @@ def event_delete_api(event_id):
             'id': event.id,
             'name': event.name,
             'date': event.date,
-            'users': [u.username for u in event.users],
+            'users': EventUser.query.filter_by(event_id=event.id).all(),
             'payments': event.payments
         }
         return jsonify(event_data), 200
@@ -87,9 +90,8 @@ def event_payment_api():
                 'cost': all_cost[i],
                 'paid': all_paid[i]
             }
-            new_payment_user = payment_user.insert().values(**new_payment_user_data)
-            db.session.execute(new_payment_user)
-            user.payments.append(new_payment)
+            new_payment_user = PaymentUser(**new_payment_user_data)
+            db.session.add(new_payment_user)
         db.session.commit()
 
         resp = {'id': new_payment.id, 'message': 'Payment added'}
