@@ -5,3 +5,5 @@ venv
 .env
 migrations
 *.db
+Icon
+.DS_Store

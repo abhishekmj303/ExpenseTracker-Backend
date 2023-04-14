@@ -59,7 +59,9 @@ def user_expense_api():
     group_users = {}
     for expense in user_expense:
         group_users[expense.user] = group_users.get(expense.user, 0) + expense.amount
-    group_users = [{'user': k, 'amount': v} for k, v in group_users.items()]
+    all_users = list(group_users.keys())
+    all_amounts = list(group_users.values())
+    group_users = {'users': all_users, 'amounts': all_amounts}
     return jsonify(group_users), 200
 
 
@@ -85,6 +87,7 @@ def expense_api():
     elif request.method == 'POST':
         data = request.get_json()
         new_expense_data = {
+            'username': user.username,
             'other_username': data.get('other_username'),
             'amount': data.get('amount'),
             'reason': data.get('reason'),

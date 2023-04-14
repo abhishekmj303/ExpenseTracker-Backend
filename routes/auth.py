@@ -12,6 +12,9 @@ def login_api():
     req = request.get_json(force=True)
     username = req.get("username", None)
     password = req.get("password", None)
+    email = req.get("email", None)
+    if not username:
+        username = User.query.filter_by(email=email).first().username
     user = guard.authenticate(username, password)
     if not user:
         return jsonify({"message": "Invalid credentials"}), 401
