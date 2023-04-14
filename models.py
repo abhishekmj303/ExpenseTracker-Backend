@@ -25,12 +25,12 @@ class User(db.Model):
     hashed_password = db.Column(db.String(255), nullable=False)
     name = db.Column(db.String(80))
     upi = db.Column(db.String(30))
-    date_joined = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    date_joined = db.Column(db.DateTime, nullable=False)
     is_confirm = db.Column(db.Boolean, default=False, server_default="false")
     is_active = db.Column(db.Boolean, default=True, server_default="true")
 
     events = db.relationship('Event', secondary='event_user', back_populates='users')
-    transactions = db.relationship('Transaction', secondary='transaction_user', back_populates='users')
+    payments = db.relationship('payment', secondary='payment_user', back_populates='users')
 
     @property
     def identity(self):
@@ -70,14 +70,14 @@ class Event(db.Model):
     name: str
     date: datetime.date
     owner: str
-    # transactions: list
+    # payments: list
     # users: list
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), default='Untitled Event', nullable=False)
-    date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    date = db.Column(db.DateTime, nullable=False)
     owner = db.Column(db.String(80), db.ForeignKey('user.username'), nullable=False)
-    transactions = db.relationship('Transaction', back_populates='event')
+    payments = db.relationship('payment', back_populates='event')
     users = db.relationship('User', secondary=event_user, back_populates='events')
 
 
@@ -87,27 +87,28 @@ class Event(db.Model):
 #     username = db.Column(db.String(80), db.ForeignKey('user.username'), primary_key=True)
 
 
-transaction_user = db.Table(
-    'transaction_user',
-    db.Column('transaction_id', db.Integer, db.ForeignKey('transaction.id')),
+payment_user = db.Table(
+    'payment_user',
+    db.Column('payment_id', db.Integer, db.ForeignKey('payment.id')),
     db.Column('user_id', db.Integer, db.ForeignKey('user.id')),
-    db.Column('amount', db.Float, nullable=False)
+    db.Column('cost', db.Float, default=0, nullable=False),
+    db.Column('paid', db.Float, default=0, nullable=False)
 )
 
 
-class Transaction(db.Model):
-    __tablename__ = 'transaction'
+class payment(db.Model):
+    __tablename__ = 'payment'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), default='Untitled', nullable=False)
-    category = db.Column(db.String(80), default='General', nullable=False)
+    reason = db.Column(db.String(80), default='General')
     event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=False)
-    event = db.relationship('Event', back_populates='transactions')
-    users = db.relationship('User', secondary=transaction_user, back_populates='transactions')
+    event = db.relationship('Event', back_populates='payments')
+    users = db.relationship('User', secondary=payment_user, back_populates='payments')
 
 
-# class TransactionUser(db.Model):
-#     __tablename__ = 'transaction_user'
-#     transaction_id = db.Column(db.Integer, db.ForeignKey('event_transaction.id'), primary_key=True)
+# class paymentUser(db.Model):
+#     __tablename__ = 'payment_user'
+#     payment_id = db.Column(db.Integer, db.ForeignKey('event_payment.id'), primary_key=True)
 #     username = db.Column(db.String(80), db.ForeignKey('user.username'), primary_key=True)
 #     amount = db.Column(db.Float, nullable=False)
 
@@ -121,7 +122,7 @@ class Expense(db.Model):
     amount: float
     event_id: int
     name: str
-    category: str
+    reason: str
     date: datetime
     is_private: bool
 
@@ -131,7 +132,7 @@ class Expense(db.Model):
     amount = db.Column(db.Float, nullable=False)
     event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=True)
     name = db.Column(db.String(80))
-    category = db.Column(db.String(80), default='General', nullable=False)
-    date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    reason = db.Column(db.String(80), default='General')
+    date = db.Column(db.DateTime, nullable=False)
     is_private = db.Column(db.Boolean, default=False, nullable=False)
     cleared = db.Column(db.Boolean, default=False, nullable=False)

@@ -29,14 +29,19 @@ def login_api():
 @app.route('/register', methods=['POST'])
 def signup_api():
     req = request.get_json(force=True)
-    req['hashed_password'] = guard.hash_password(req.get('password'))
-    del req['password']
-    new_username = req.get('username')
+    new_user_data = {
+        'username': req.get('username'),
+        'email': req.get('email'),
+        'password': guard.hash_password(req.get('password')),
+        'name': req.get('name'),
+        'upi': req.get('upi'),
+        'date_joined': datetime.now(),
+    }
     new_user = User(**req)
-    old_user = User.query.filter_by(username=new_username).first()
+    old_user = User.query.filter_by(username=new_user_data['username']).first()
     if old_user:
         if old_user.is_confirm:
-            resp = {'message': f'username {new_username} already exists', 'status': 'fail'}
+            resp = {'message': f'username {new_user_data["username"]} already exists', 'status': 'fail'}
             return jsonify(resp), 409
         else:
             db.session.delete(old_user)

@@ -68,7 +68,7 @@ def expense_api():
         this_expenses = Expense.query(
             Expense.other_username.label('user'),
             Expense.amount,
-            Expense.category.label('reason'),
+            Expense.reason,
             Expense.date,
             Expense.is_private
         ).filter(
@@ -77,7 +77,7 @@ def expense_api():
         other_expenses = Expense.query(
             Expense.username.label('user'),
             -Expense.amount,
-            Expense.category.label('reason'),
+            Expense.reason,
             Expense.date,
             Expense.is_private
         ).filter(
@@ -90,8 +90,8 @@ def expense_api():
         new_expense_data = {
             'other_username': data.get('other_username'),
             'amount': data.get('amount'),
-            'category': data.get('reason'),
-            'date': data.get('date'),
+            'reason': data.get('reason'),
+            'date': datetime.fromisoformat(data.get('date', datetime.now().isoformat())),
             'is_private': data.get('is_private')
         }
         expense = Expense(**new_expense_data)
