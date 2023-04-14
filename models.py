@@ -30,7 +30,7 @@ class User(db.Model):
     is_active = db.Column(db.Boolean, default=True, server_default="true")
 
     events = db.relationship('Event', secondary='event_user', back_populates='users')
-    payments = db.relationship('payment', secondary='payment_user', back_populates='users')
+    payments = db.relationship('Payment', secondary='payment_user', back_populates='users')
 
     @property
     def identity(self):
@@ -77,7 +77,7 @@ class Event(db.Model):
     name = db.Column(db.String(80), default='Untitled Event', nullable=False)
     date = db.Column(db.DateTime, nullable=False)
     owner = db.Column(db.String(80), db.ForeignKey('user.username'), nullable=False)
-    payments = db.relationship('payment', back_populates='event')
+    payments = db.relationship('Payment', back_populates='event')
     users = db.relationship('User', secondary=event_user, back_populates='events')
 
 
@@ -96,8 +96,15 @@ payment_user = db.Table(
 )
 
 
-class payment(db.Model):
+@dataclass
+class Payment(db.Model):
     __tablename__ = 'payment'
+    id: int
+    name: str
+    reason: str
+    event_id: int
+    # users: list
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), default='Untitled', nullable=False)
     reason = db.Column(db.String(80), default='General')
