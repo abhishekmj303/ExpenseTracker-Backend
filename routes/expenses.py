@@ -6,25 +6,42 @@ from app import app
 from models import *
 
 
+def user_expenses_query(user: User):
+    self_expenses = Expense.query.with_entities(
+        Expense.other_username.label('user'),
+        Expense.amount,
+        Expense.reason,
+        Expense.date,
+        Expense.is_private
+    ).filter(
+        (Expense.username == user.username)
+    )
+    other_expenses = Expense.query.with_entities(
+        Expense.username.label('user'),
+        -Expense.amount,
+        Expense.reason,
+        Expense.date,
+        Expense.is_private
+    ).filter(
+        (Expense.other_username == user.username) & (Expense.is_private == False)
+    )
+    expenses = self_expenses.union(other_expenses)
+    return expenses
+
+
 @app.route('/expenses/total', methods=['GET'])
 @flask_praetorian.auth_required
 def total_expense_api():
     user = flask_praetorian.current_user()
-    this_incoming = db.session.query(func.sum(Expense.amount)).filter(
-        ((Expense.username == user.username) & (Expense.amount > 0))
-    ).scalar()
-    other_incoming = db.session.query(func.sum(Expense.amount)).filter(
-        ((Expense.other_username == user.username) & (Expense.is_private == False) & (Expense.amount < 0))
-    ).scalar()
-    this_outgoing = db.session.query(func.sum(Expense.amount)).filter(
-        ((Expense.username == user.username) & (Expense.amount < 0))
-    ).scalar()
-    other_outgoing = db.session.query(func.sum(Expense.amount)).filter(
-        ((Expense.other_username == user.username) & (Expense.is_private == False) & (Expense.amount > 0))
-    ).scalar()
-    incoming = float(this_incoming or 0) - float(other_incoming or 0)
-    outgoing = float(this_outgoing or 0) - float(other_outgoing or 0)
-    total_balance = float(incoming or 0) + float(outgoing or 0)
+    expenses = user_expenses_query(user)
+    incoming = 0
+    outgoing = 0
+    for expense in expenses:
+        if expense.amount > 0:
+            incoming += expense.amount
+        else:
+            outgoing += expense.amount
+    total_balance = incoming + outgoing
     resp = {
         'username': user.username,
         'total_balance': total_balance,
@@ -38,26 +55,23 @@ def total_expense_api():
 @flask_praetorian.auth_required
 def user_expense_api():
     user = flask_praetorian.current_user()
-    this_total = db.session.query(
-        Expense.other_username.label('user'),
-        func.sum(Expense.amount).label('amount_sum')
-    ).filter(
-        (Expense.username == user.username)
-    ).group_by(Expense.other_username)
-    other_total = db.session.query(
-        Expense.username.label('user'),
-        func.sum(-Expense.amount).label('amount_sum')
-    ).filter(
-        (Expense.other_username == user.username) & (Expense.is_private == False)
-    ).group_by(Expense.username)
-    total = this_total.union(other_total).all()
-    user_expense = {}
-    for expense in total:
-        if expense.user not in user_expense:
-            user_expense[expense.user] = expense.amount_sum
-        else:
-            user_expense[expense.user] += expense.amount_sum
-    return jsonify(user_expense), 200
+    user_expense = user_expenses_query(user).all()
+    group_users = {}
+    for expense in user_expense:
+        group_users[expense.user] = group_users.get(expense.user, 0) + expense.amount
+    group_users = [{'user': k, 'amount': v} for k, v in group_users.items()]
+    return jsonify(group_users), 200
+
+
+@app.route('/expenses/past/<days>', methods=['GET'])
+@flask_praetorian.auth_required
+def past_expense_api(days):
+    user = flask_praetorian.current_user()
+    expenses = user_expenses_query(user).filter(
+        Expense.date > func.dateadd('day', -int(days), func.now())
+    ).all()
+    expenses = [dict(e._asdict()) for e in expenses]
+    return jsonify(expenses), 200
 
 
 @app.route('/expenses', methods=['GET', 'POST'])
@@ -65,25 +79,8 @@ def user_expense_api():
 def expense_api():
     user = flask_praetorian.current_user()
     if request.method == 'GET':
-        this_expenses = Expense.query(
-            Expense.other_username.label('user'),
-            Expense.amount,
-            Expense.reason,
-            Expense.date,
-            Expense.is_private
-        ).filter(
-            (Expense.username == user.username)
-        )
-        other_expenses = Expense.query(
-            Expense.username.label('user'),
-            -Expense.amount,
-            Expense.reason,
-            Expense.date,
-            Expense.is_private
-        ).filter(
-            (Expense.other_username == user.username) & (Expense.is_private == False)
-        )
-        expenses = this_expenses.union(other_expenses).all()
+        expenses = user_expenses_query(user).all()
+        expenses = [dict(e._asdict()) for e in expenses]
         return jsonify(expenses), 200
     elif request.method == 'POST':
         data = request.get_json()
