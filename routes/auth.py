@@ -26,6 +26,8 @@ def login_api():
         "status": "success"
     })
     resp.headers.add('Set-Cookie', f'access_token={access_token}; Domain=expensetracker-backend-production.up.railway.app; HttpOnly;')
+    resp.headers.add('Set-Cookie', f'access_token={access_token}; HttpOnly;')
+    resp.headers.add('Access-Control-Allow-Credentials', 'true')
     return resp, 200
 
 
