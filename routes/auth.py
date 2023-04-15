@@ -23,7 +23,8 @@ def login_api():
     access_token = guard.encode_jwt_token(user)
     resp = jsonify({
         "message": "Login successful",
-        "status": "success"
+        "status": "success",
+        "access_token": access_token
     })
     resp.headers.add('Set-Cookie', f'access_token={access_token}; Domain=expensetracker-backend-production.up.railway.app; HttpOnly;')
     resp.headers.add('Set-Cookie', f'access_token={access_token}; HttpOnly;')
