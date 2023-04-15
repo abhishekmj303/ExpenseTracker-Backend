@@ -25,7 +25,7 @@ def login_api():
         "message": "Login successful",
         "status": "success"
     })
-    resp.headers.add('Set-Cookie', f'access_token={access_token}; HttpOnly;')
+    resp.headers.add('Set-Cookie', f'access_token={access_token}; Domain=expensetracker-backend-production.up.railway.app; HttpOnly;')
     return resp, 200
 
 
@@ -54,7 +54,7 @@ def signup_api():
     guard.send_registration_email(
         new_user.email, new_user,
         subject="Confirm your account",
-        confirmation_uri="http://localhost:5000/verify"
+        confirmation_uri="https://expensetracker-backend-production.up.railway.app/verify"
     )
     resp = {'message': f'successfully sent registration email to user {new_user.email}'}
     return jsonify(resp), 200
