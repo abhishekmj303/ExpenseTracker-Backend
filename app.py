@@ -44,3 +44,4 @@ from routes.auth import *
 from routes.users import *
 from routes.expenses import *
 from routes.events import *
+from routes.stats import *

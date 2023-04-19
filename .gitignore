@@ -7,3 +7,4 @@ migrations
 *.db
 Icon
 .DS_Store
+Icon*

@@ -69,7 +69,7 @@ def user_expense_api():
 @flask_praetorian.auth_required
 def user_expense_username_api(username):
     user = flask_praetorian.current_user()
-    expenses = user_expenses_query(user).filter_by(user=username).all()
+    expenses = user_expenses_query(user).filter_by(username=username).all()
     expenses = [dict(e._asdict()) for e in expenses]
     return jsonify(expenses), 200
 

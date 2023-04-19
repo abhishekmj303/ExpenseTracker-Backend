@@ -3,7 +3,7 @@ import flask_praetorian
 
 from app import app
 from models import *
-
+from smart_split import add_expenses
 
 @app.route('/events', methods=['GET', 'POST'])
 @flask_praetorian.auth_required
@@ -25,6 +25,7 @@ def event_api():
             for username in data.get('users')
         ]
         db.session.add(new_event)
+        new_event.users.append(user)
         for u in new_event_users:
             new_event.users.append(u)
         db.session.commit()
@@ -92,5 +93,7 @@ def event_payment_api():
             user.payments.append(new_payment)
         db.session.commit()
 
-        resp = {'id': new_payment.id, 'message': 'Payment added'}
-        return jsonify(resp), 201
+    add_expenses(event)
+    resp = {'id': new_payment.id, 'message': 'Payment added'}
+    return jsonify(resp), 201
+
